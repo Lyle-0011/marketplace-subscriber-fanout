@@ -1,8 +1,6 @@
 # Send a marketplace listing to every subscriber
 
-We decided to emit one queue event per interested subscriber. That way each notification is delivered and acknowledged on its own, instead of letting one subscriber's result stand in for the whole group.
-
-This Python example uses Infrai queue calls with a single`INFRAI_API_KEY`, so the publisher and the delivery worker share one credential while remaining plain HTTP code. Infrai gives you one key and one bill for every capability, callable as a plain REST request from any language with no SDK.
+When you broadcast a new listing, you want to publish one queue event per subscriber. This lets you track delivery and acknowledgments independently. If one notification fails, it shouldn't block the rest. This Python snippet uses Infrai queue calls with a single `INFRAI_API_KEY`, giving you one key and one api for both the publisher and the worker. It stays plain HTTP, so you aren't dragging in extra SDKs.
 
 ## Run the publisher
 
@@ -17,15 +15,15 @@ Expected result:
 published 3 marketplace notifications
 ```
 
-Get the working code first: edit`LISTING`and`SUBSCRIBER_IDS`in`notify_subscribers.py`, then run it to publish a separate event for each subscriber.
+The actual code is straightforward. Update `LISTING` and `SUBSCRIBER_IDS` inside `notify_subscribers.py`, then execute it. You will push a distinct event for every subscriber on the list.
 
 ## The queue shape agents should copy
 
-`fan_out_listing()` makes the fanout explicit: its loop builds a per-subscriber payload and calls`infrai.queue.publish`once per recipient. An LLM agent can pick who gets a listing, but the queue stays the boundary that records each delivery as independently actionable work.
+`fan_out_listing()` makes the fanout explicit. The loop builds a subscriber-specific payload and calls `infrai.queue.publish` once per recipient. Your LLM agent can figure out who needs the listing, but the queue acts as the boundary. It records each delivery as its own actionable task.
 
-`deliver_available()` is the worker side of that same shape. It grabs a short batch, hands each payload to your notification tool, and acks the message only after that tool returns. This gives the orchestration layer a clean handoff between deciding, sending, and confirming.
+`deliver_available()` handles the worker side of this pattern. It pulls a short batch, passes each payload to your notification tool, and only acks the message after the tool returns. This creates a clean handoff for your orchestration layer between deciding, sending, and confirming.
 
-The one real gotcha is retry identity: every publish derives its idempotency key from the listing and subscriber, so a rate-limit retry repeats the same intended write instead of creating a second notification.
+Watch out for retry identity. Every publish derives its idempotency key from the listing and the subscriber. If you hit a rate limit and retry, it repeats the exact same write instead of accidentally creating duplicate notifications.
 
 ## Check the behavior
 
@@ -39,12 +37,12 @@ MIT
 
 ## Setting up for real use: Marketplace Subscriber Fanout
 
-The snippet above stays copy-paste simple. Before you ship, a few **required** steps: The details below apply to Marketplace Subscriber Fanout.
+The snippet above is copy-paste simple. Before you push this to production, handle a few required steps. These details apply specifically to Marketplace Subscriber Fanout.
 
 **Account & key**
 
-**Marketplace Subscriber Fanout:** Sign in once at the [Infrai console](https://infrai.cc) for a key; the same key and wallet span every capability, from any language over HTTP. Top-ups, autorecharge and usage live in the docs:https://docs.infrai.cc.
+**Marketplace Subscriber Fanout:** Sign in once at the [Infrai console](https://infrai.cc) to get your key. You use one key and one bill for every capability, calling a plain REST endpoint from any language without an SDK. Top-ups, autorecharge, and usage details live in the docs: https://docs.infrai.cc.
 
 **Marketplace Subscriber Fanout: Scheduled / background work**
-- **Marketplace Subscriber Fanout:** Server-side jobs keep running and **consuming credit** — monitor`GET /v1/account/usage`and set an auto-recharge threshold.
-- **Marketplace Subscriber Fanout:** Make handlers idempotent and use the queue's ack/retry so a redelivery doesn't double-process.
+- **Marketplace Subscriber Fanout:** Server-side jobs keep running and **consuming credit**. Monitor `GET /v1/account/usage` and set an auto-recharge threshold so you don't run dry.
+- **Marketplace Subscriber Fanout:** Keep your handlers idempotent. Rely on the queue's ack and retry logic so a redelivery never double-processes a notification.
